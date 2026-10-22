@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hooked On Drugs 2026 Check-In Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; background-color: #f8f9fa; margin: 0; }
+    #reader { width: 100%; max-width: 500px; margin: 0 auto; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .controls { margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; display: inline-block; text-align: left; }
+    .status { margin-top: 20px; font-weight: bold; font-size: 1.2em; min-height: 30px; }
+  </style>
+</head>
+<body>
+  <h2>QR Check-In Desk</h2>
+  
+  <div class="controls">
+    <label><input type="radio" name="scanType" value="Arrival" checked> Event Arrival (Registered)</label><br>
+    <label><input type="radio" name="scanType" value="Check-In"> Session Check-In</label><br>
+    <label><input type="radio" name="scanType" value="Check-Out"> Session Check-Out</label>
+  </div>
+  
+  <div id="reader"></div>
+  <p id="status" class="status" style="color: #7f8c8d;">Waiting for scan...</p>
+
+  <script>
+    // Paste your Google Apps Script Web App URL here
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzNqlfoVLTJArDssDFh536q-pVSx5gvOlFsLgldE9-aG-draCdBGAps6Yj9Qst7iiOV/exec";
+    
+    let isProcessing = false;
+
+    function onScanSuccess(decodedText, decodedResult) {
+      if (isProcessing) return; // Prevent duplicate rapid scans
+      
+      isProcessing = true;
+      html5QrcodeScanner.pause(true);
+      
+      const statusEl = document.getElementById('status');
+      const scanType = document.querySelector('input[name="scanType"]:checked').value;
+      
+      statusEl.innerText = "Syncing with database: " + decodedText + "...";
+      statusEl.style.color = "#f39c12";
+
+      fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        redirect: "follow", // Necessary for Google Script 302 redirects
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8", // text/plain skips CORS preflight
+        },
+        body: JSON.stringify({
+          participantId: decodedText,
+          scanType: scanType
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          statusEl.innerText = "✅ " + data.name + " logged for " + scanType;
+          statusEl.style.color = "#2ecc71";
+        } else {
+          statusEl.innerText = "❌ Error: " + data.message;
+          statusEl.style.color = "#e74c3c";
+        }
+      })
+      .catch(error => {
+        statusEl.innerText = "❌ Network Error. Try again.";
+        statusEl.style.color = "#e74c3c";
+        console.error("Error:", error);
+      })
+      .finally(() => {
+        // Resume scanning after a 2.5 second delay
+        setTimeout(() => {
+          statusEl.innerText = "Waiting for next scan...";
+          statusEl.style.color = "#7f8c8d";
+          isProcessing = false;
+          html5QrcodeScanner.resume();
+        }, 2500);
+      });
+    }
+
+    const html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
+      fps: 10, 
+      qrbox: { width: 250, height: 250 },
+      rememberLastUsedCamera: true
+    });
+    html5QrcodeScanner.render(onScanSuccess);
+  </script>
+</body>
+</html>
